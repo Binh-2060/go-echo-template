@@ -96,7 +96,6 @@ func main() {
 		if err := e.Start(fmt.Sprint(":", port)); err != nil && err != http.ErrServerClosed {
 			e.Logger.Fatal("shutting down the server", err)
 		}
-
 	}()
 
 	// Wait for interrupt signal to gracefully shut down the server with a timeout of 10 seconds.
