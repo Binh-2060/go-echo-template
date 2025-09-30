@@ -1,0 +1,5 @@
+.air.toml
+.tmp
+.env
+app.rsa
+app.rsa.pub

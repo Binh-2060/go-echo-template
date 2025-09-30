@@ -18,7 +18,6 @@ import (
 	recoverMiddleware "github.com/Binh-2060/go-echo-template/config/recover"
 	requestid "github.com/Binh-2060/go-echo-template/config/request-id"
 	"github.com/Binh-2060/go-echo-template/config/secure"
-	dbpkg "github.com/Binh-2060/go-echo-template/pkg/db-pkg"
 	"github.com/labstack/echo/v4"
 )
 
@@ -63,7 +62,8 @@ func main() {
 	apiV1 := e.Group("/api/v1")
 	routes.SetRoutes(apiV1)
 
-	dbpkg.CreateDatabaseConnection()
+	//connect to datbase
+	// dbpkg.CreateDatabaseConnection()
 
 	//Error handler
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
