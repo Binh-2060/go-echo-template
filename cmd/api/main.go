@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +26,7 @@ func init() {
 		dotenv.LoadEnv()
 		mode = os.Getenv("GO_ENV")
 	}
+	loggers.InitLogger()
 
 	log.Println("Service run in mode", mode)
 }
@@ -35,7 +35,7 @@ func main() {
 	e := echo.New()
 
 	//loggers
-	e.Use(loggers.SetEchoLogger)
+	e.Use(loggers.SetEchoZeroLogger)
 
 	//cors middilewares
 	cors.SetCorsMiddlwares(e)
@@ -93,7 +93,7 @@ func main() {
 	// Start server
 	go func() {
 		port := os.Getenv("PORT")
-		if err := e.Start(fmt.Sprint(":", port)); err != nil && err != http.ErrServerClosed {
+		if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
 			e.Logger.Fatal("shutting down the server", err)
 		}
 	}()
