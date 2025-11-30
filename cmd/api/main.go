@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/Binh-2060/go-echo-template/config/cors"
 	"github.com/Binh-2060/go-echo-template/config/dotenv"
 	"github.com/Binh-2060/go-echo-template/config/loggers"
+	"github.com/Binh-2060/go-echo-template/config/ratelimit"
 	recoverMiddleware "github.com/Binh-2060/go-echo-template/config/recover"
 	requestid "github.com/Binh-2060/go-echo-template/config/request-id"
 	"github.com/Binh-2060/go-echo-template/config/secure"
@@ -27,15 +27,17 @@ func init() {
 		dotenv.LoadEnv()
 		mode = os.Getenv("GO_ENV")
 	}
+	loggers.InitLogger()
 
-	log.Println("Service run in mode", mode)
+	log.Println("#### Service run in mode:", mode, "####")
 }
 
 func main() {
+	timenow := time.Now()
 	e := echo.New()
 
 	//loggers
-	e.Use(loggers.SetEchoLogger)
+	e.Use(loggers.SetEchoZeroLogger)
 
 	//cors middilewares
 	cors.SetCorsMiddlwares(e)
@@ -55,10 +57,21 @@ func main() {
 	//secure
 	secure.SetSecureMiddilware(e)
 
+	//ratelimit
+	ratelimit.SetEchoRateLimit(e)
+
+	//response healthz or graceful response
 	e.GET("/healthz", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, "ok")
+		res := map[string]interface{}{
+			"MESSAGE":  "ok",
+			"APP_NAME": os.Getenv("APP_NAME"),
+			"BUILD_AT": os.Getenv("BUILD_AT"),
+			"START_AT": timenow,
+		}
+		return c.JSON(http.StatusOK, res)
 	})
 
+	//set route api
 	apiV1 := e.Group("/api/v1")
 	routes.SetRoutes(apiV1)
 
@@ -93,7 +106,7 @@ func main() {
 	// Start server
 	go func() {
 		port := os.Getenv("PORT")
-		if err := e.Start(fmt.Sprint(":", port)); err != nil && err != http.ErrServerClosed {
+		if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
 			e.Logger.Fatal("shutting down the server", err)
 		}
 	}()
