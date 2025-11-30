@@ -14,6 +14,7 @@ import (
 	"github.com/Binh-2060/go-echo-template/config/cors"
 	"github.com/Binh-2060/go-echo-template/config/dotenv"
 	"github.com/Binh-2060/go-echo-template/config/loggers"
+	"github.com/Binh-2060/go-echo-template/config/ratelimit"
 	recoverMiddleware "github.com/Binh-2060/go-echo-template/config/recover"
 	requestid "github.com/Binh-2060/go-echo-template/config/request-id"
 	"github.com/Binh-2060/go-echo-template/config/secure"
@@ -28,10 +29,11 @@ func init() {
 	}
 	loggers.InitLogger()
 
-	log.Println("Service run in mode", mode)
+	log.Println("#### Service run in mode:", mode, "####")
 }
 
 func main() {
+	timenow := time.Now()
 	e := echo.New()
 
 	//loggers
@@ -55,10 +57,21 @@ func main() {
 	//secure
 	secure.SetSecureMiddilware(e)
 
+	//ratelimit
+	ratelimit.SetEchoRateLimit(e)
+
+	//response healthz or graceful response
 	e.GET("/healthz", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, "ok")
+		res := map[string]interface{}{
+			"MESSAGE":  "ok",
+			"APP_NAME": os.Getenv("APP_NAME"),
+			"BUILD_AT": os.Getenv("BUILD_AT"),
+			"START_AT": timenow,
+		}
+		return c.JSON(http.StatusOK, res)
 	})
 
+	//set route api
 	apiV1 := e.Group("/api/v1")
 	routes.SetRoutes(apiV1)
 

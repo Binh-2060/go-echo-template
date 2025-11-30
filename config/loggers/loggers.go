@@ -5,16 +5,59 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog"
 )
+
+var Logger zerolog.Logger
+
+type ErrorResponse struct {
+	Code    int
+	Message string
+}
 
 type CustomResponseWriter struct {
 	echo.Response
 	body *bytes.Buffer
+}
+
+func InitLogger() {
+	log.Println("#### Begin Load Loggers Config ####")
+	Logger = zerolog.New(os.Stdout).With().
+		Timestamp().
+		Logger()
+}
+
+func catchError(err error) ErrorResponse {
+	//set by default
+	var res = ErrorResponse{
+		Code:    http.StatusOK,
+		Message: "-",
+	}
+
+	if err == nil {
+		return res
+	}
+
+	if httpError, ok := err.(*echo.HTTPError); ok {
+		if m, ok := httpError.Message.(string); ok {
+			res.Message = m
+		} else {
+			res.Message = err.Error()
+		}
+		res.Code = httpError.Code
+	} else {
+		res.Code = http.StatusInternalServerError
+		res.Message = err.Error()
+	}
+
+	return res
 }
 
 // Write captures the response body
@@ -87,58 +130,49 @@ func formatErrorMessage(err error) string {
 	return msg
 }
 
-// LoggingMiddleware logs request and response bodies in structured JSON format
-func SetEchoLogger(next echo.HandlerFunc) echo.HandlerFunc {
+func SetEchoZeroLogger(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Start time for logging
-		start := time.Now()
-
-		// format requestBodyJson
-		requestJSON := formatJsonRequest(c)
-
-		// Wrap response writer to capture response body
-		// buf := new(bytes.Buffer)
-		// customWriter := &CustomResponseWriter{
-		// 	Response: *c.Response(),
-		// 	body:     buf,
-		// }
-		// c.SetResponse(echo.NewResponse(customWriter, c.Echo()))
-
-		// Call the next handler
-		err := next(c)
-
-		// Parse response body as JSON
-		// var responseJSON interface{}
-		// if buf.Len() > 0 {
-		// 	if err := json.Unmarshal(buf.Bytes(), &responseJSON); err != nil {
-		// 		// Fallback to empty map if JSON is invalid
-		// 		responseJSON = map[string]interface{}{}
-		// 	}
-		// } else {
-		// 	responseJSON = map[string]interface{}{}
-		// }
-
-		claims := c.Get("user")
-		// Prepare log data
-		logData := map[string]interface{}{
-			"timestamp":     time.Now().Format(time.RFC3339Nano),
-			"method":        c.Request().Method,
-			"user":          claims,
-			"request_body":  requestJSON,
-			"path":          c.Request().URL.Path,
-			"query_params":  c.Request().URL.RawQuery,
-			"status":        c.Response().Status,
-			"remote_ip":     c.RealIP(),
-			"response_body": "-",
-			"latency":       fmt.Sprint(time.Since(start).Seconds(), " s"),
-			"error":         formatErrorMessage(err),
+		// Skip logging OPTIONS preflight requests
+		if c.Request().Method == http.MethodOptions {
+			return next(c)
 		}
 
-		// Encode and log as JSON
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetEscapeHTML(false) // Keeps '&' instead of \u0026
-		_ = enc.Encode(logData)
+		start := time.Now()
+		requestJSON := formatJsonRequest(c)
 
+		// Run handler
+		err := next(c)
+
+		// Calculate latency
+		latency := time.Since(start)
+
+		var errorRes = catchError(err)
+		var event *zerolog.Event
+		if errorRes.Code == http.StatusOK {
+			event = Logger.Info()
+		} else {
+			event = Logger.Error()
+		}
+
+		// Prepare base event
+		//you can custom as you want to loggings
+		event = Logger.Info().
+			Str("method", c.Request().Method).
+			Str("path", c.Request().URL.Path).
+			Str("query_params", c.Request().URL.RawQuery).
+			Str("remote_ip", c.RealIP()).
+			Str("request_id", c.Response().Header().Get(echo.HeaderXRequestID)).
+			Str("latency_sec", fmt.Sprint(latency.Seconds(), "s")).
+			Int("status", errorRes.Code).
+			Str("error", errorRes.Message).
+			// Int64("bytes_out", c.Response().Size).
+			Interface("request_body", requestJSON)
+
+		if user := c.Get("user"); user != nil {
+			event.Interface("user", user)
+		}
+
+		event.Msg("Request completed")
 		return err
 	}
 }
